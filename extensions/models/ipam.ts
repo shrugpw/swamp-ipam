@@ -945,7 +945,7 @@ export function renderTopologyMermaid(plan: PlanSummary): string {
 /** IPv6 address planner model definition. */
 export const model = {
   type: "@shrug/ipam",
-  version: "2026.07.10.1",
+  version: "2026.07.11.1",
   description:
     "IPv6 address planner: computes fully-qualified prefixes from a region-rooted /40 allocation scheme and validates invariants.",
   globalArguments: GlobalArgsSchema,
