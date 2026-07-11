@@ -1,0 +1,375 @@
+# Example: Cascade Fiber — a fictional regional ISP
+# Uses RFC 9637 documentation prefix (3fff::/20).
+# Copy this file and replace with your own allocation.
+
+root: "3fff:0db8"
+rootLength: 36
+infraRegion: "infra"
+infraSlot: "0e"
+loopbackSuffix: "ffff"
+
+regions:
+  infra:
+    nibble: "0"
+    purpose: Infrastructure & management
+    status: active
+  west:
+    nibble: "a"
+    purpose: West Coast
+    status: active
+  central:
+    nibble: "5"
+    purpose: Central US
+    status: active
+  east:
+    nibble: "c"
+    purpose: East Coast
+    status: active
+  south:
+    nibble: "3"
+    purpose: Southeast US
+    status: planned
+
+sites:
+  sea:
+    region: west
+    slotNibble: "1"
+    name: Seattle
+    location: "Seattle, WA"
+    provider: Westin Colo
+    status: active
+  lax:
+    region: west
+    slotNibble: "2"
+    name: Los Angeles
+    location: "Los Angeles, CA"
+    provider: CoreSite LA1
+    status: active
+  den:
+    region: central
+    slotNibble: "1"
+    name: Denver
+    location: "Denver, CO"
+    provider: Flexential DEN
+    status: active
+  dfw:
+    region: central
+    slotNibble: "4"
+    name: Dallas
+    location: "Dallas, TX"
+    provider: CyrusOne DFW
+    status: active
+  iad:
+    region: east
+    slotNibble: "1"
+    name: Ashburn
+    location: "Ashburn, VA"
+    provider: Equinix DC5
+    status: active
+  nyc:
+    region: east
+    slotNibble: "3"
+    name: New York
+    location: "New York, NY"
+    provider: 60 Hudson
+    status: active
+  atl:
+    region: south
+    slotNibble: "1"
+    name: Atlanta
+    location: "Atlanta, GA"
+    provider: QTS Atlanta
+    status: planned
+  mia:
+    region: south
+    slotNibble: "7"
+    name: Miami
+    location: "Miami, FL"
+    provider: Equinix MI1
+    status: planned
+
+subnets:
+  # Seattle
+  sea-mgmt:
+    site: sea
+    vlan: 10
+    nibbles: "0010"
+    purpose: Management
+    status: active
+  sea-peering:
+    site: sea
+    vlan: 100
+    nibbles: "0100"
+    purpose: IX peering (SIX)
+    status: active
+  sea-transit:
+    site: sea
+    vlan: 200
+    nibbles: "0200"
+    purpose: Transit uplinks
+    status: active
+  sea-cust:
+    site: sea
+    vlan: 300
+    nibbles: "0300"
+    purpose: Customer aggregation
+    status: active
+
+  # Los Angeles
+  lax-mgmt:
+    site: lax
+    vlan: 10
+    nibbles: "0010"
+    purpose: Management
+    status: active
+  lax-peering:
+    site: lax
+    vlan: 100
+    nibbles: "0100"
+    purpose: IX peering (LAIIX)
+    status: active
+  lax-cust:
+    site: lax
+    vlan: 300
+    nibbles: "0300"
+    purpose: Customer aggregation
+    status: active
+
+  # Denver
+  den-mgmt:
+    site: den
+    vlan: 10
+    nibbles: "0010"
+    purpose: Management
+    status: active
+  den-cust:
+    site: den
+    vlan: 300
+    nibbles: "0300"
+    purpose: Customer aggregation
+    status: active
+
+  # Dallas
+  dfw-mgmt:
+    site: dfw
+    vlan: 10
+    nibbles: "0010"
+    purpose: Management
+    status: active
+  dfw-peering:
+    site: dfw
+    vlan: 100
+    nibbles: "0100"
+    purpose: IX peering (Equinix DFW)
+    status: active
+  dfw-cust:
+    site: dfw
+    vlan: 300
+    nibbles: "0300"
+    purpose: Customer aggregation
+    status: active
+  dfw-voip:
+    site: dfw
+    vlan: 400
+    nibbles: "0400"
+    purpose: VoIP services
+    status: planned
+
+  # Ashburn
+  iad-mgmt:
+    site: iad
+    vlan: 10
+    nibbles: "0010"
+    purpose: Management
+    status: active
+  iad-peering:
+    site: iad
+    vlan: 100
+    nibbles: "0100"
+    purpose: IX peering (LINX NoVA)
+    status: active
+  iad-transit:
+    site: iad
+    vlan: 200
+    nibbles: "0200"
+    purpose: Transit uplinks
+    status: active
+  iad-cust:
+    site: iad
+    vlan: 300
+    nibbles: "0300"
+    purpose: Customer aggregation
+    status: active
+
+  # New York
+  nyc-mgmt:
+    site: nyc
+    vlan: 10
+    nibbles: "0010"
+    purpose: Management
+    status: active
+  nyc-peering:
+    site: nyc
+    vlan: 100
+    nibbles: "0100"
+    purpose: IX peering (NYIIX)
+    status: active
+  nyc-cust:
+    site: nyc
+    vlan: 300
+    nibbles: "0300"
+    purpose: Customer aggregation
+    status: planned
+
+  # Atlanta (planned)
+  atl-mgmt:
+    site: atl
+    vlan: 10
+    nibbles: "0010"
+    purpose: Management
+    status: planned
+  atl-cust:
+    site: atl
+    vlan: 300
+    nibbles: "0300"
+    purpose: Customer aggregation
+    status: planned
+
+tunnels:
+  # Backbone ring: SEA ↔ DEN ↔ DFW ↔ IAD ↔ NYC (+ cross-connects)
+  sea-den:
+    endpointA: Seattle
+    endpointB: Denver
+    index: 0
+    purpose: West–Central backbone
+    status: active
+  sea-lax:
+    endpointA: Seattle
+    endpointB: Los Angeles
+    index: 1
+    purpose: West Coast backbone
+    status: active
+  den-dfw:
+    endpointA: Denver
+    endpointB: Dallas
+    index: 2
+    purpose: Central backbone
+    status: active
+  dfw-iad:
+    endpointA: Dallas
+    endpointB: Ashburn
+    index: 3
+    purpose: South–East backbone
+    status: active
+  iad-nyc:
+    endpointA: Ashburn
+    endpointB: New York
+    index: 4
+    purpose: East Coast backbone
+    status: active
+  sea-iad:
+    endpointA: Seattle
+    endpointB: Ashburn
+    index: 5
+    purpose: Cross-country shortcut
+    status: active
+  lax-dfw:
+    endpointA: Los Angeles
+    endpointB: Dallas
+    index: 6
+    purpose: Southwest link
+    status: active
+  dfw-atl:
+    endpointA: Dallas
+    endpointB: Atlanta
+    index: 7
+    purpose: South expansion
+    status: planned
+  atl-iad:
+    endpointA: Atlanta
+    endpointB: Ashburn
+    index: 8
+    purpose: Southeast–East backbone
+    status: planned
+  atl-mia:
+    endpointA: Atlanta
+    endpointB: Miami
+    index: 9
+    purpose: Southeast expansion
+    status: planned
+
+loopbacks:
+  sea-rtr:
+    node: Seattle
+    index: 1
+    role: Core router
+    status: active
+  lax-rtr:
+    node: Los Angeles
+    index: 2
+    role: Core router
+    status: active
+  den-rtr:
+    node: Denver
+    index: 3
+    role: Route reflector
+    status: active
+  dfw-rtr:
+    node: Dallas
+    index: 4
+    role: Core router
+    status: active
+  iad-rtr:
+    node: Ashburn
+    index: 5
+    role: Route reflector
+    status: active
+  nyc-rtr:
+    node: New York
+    index: 6
+    role: Core router
+    status: active
+  atl-rtr:
+    node: Atlanta
+    index: 7
+    role: Core router
+    status: planned
+  mia-rtr:
+    node: Miami
+    index: 8
+    role: Edge router
+    status: planned
+
+anycastPrefixes:
+  global-svc:
+    region: infra
+    nibbles: "ce"
+    purpose: Global anycast services
+    status: active
+  dns-auth:
+    region: infra
+    nibbles: "d0"
+    purpose: Authoritative DNS
+    status: active
+
+anycastVips:
+  dns-resolver:
+    prefix48: global-svc
+    hostPart: "53"
+    service: Recursive DNS
+    status: active
+  dns-auth:
+    prefix48: dns-auth
+    hostPart: "53"
+    service: Authoritative DNS
+    status: active
+  looking-glass:
+    prefix48: global-svc
+    hostPart: "80"
+    service: Looking glass / route server
+    status: active
+  ntp:
+    prefix48: global-svc
+    hostPart: "7b"
+    service: NTP
+    status: planned

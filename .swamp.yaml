@@ -1,0 +1,9 @@
+swampVersion: 20260709.014917.0
+initializedAt: '2026-07-10T22:30:00.000Z'
+repoId: 3313c3df-6e0e-4b7d-b645-649f4b5dfa19
+tools:
+  - claude
+gitignoreManaged: true
+trustedCollectives:
+  - swamp
+  - shrug

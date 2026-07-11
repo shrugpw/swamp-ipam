@@ -1,0 +1,27 @@
+manifestVersion: 1
+name: "@shrug/ipam"
+version: "2026.07.10.1"
+description: "IPv6 address planner: region-rooted /40 allocation, /44-stride site envelopes, subnet/tunnel/loopback/anycast computation with overlap validation."
+
+repository: https://github.com/shrugpw/swamp-ipam
+
+additionalFiles:
+  - README.md
+  - LICENSE.txt
+  - examples/example-plan.yaml
+
+models:
+  - ipam.ts
+
+reports:
+  - ipam_report.ts
+  - ipam_utilization.ts
+  - ipam_status.ts
+
+platforms: []
+
+labels:
+  - ipv6
+  - ipam
+  - networking
+  - address-plan
