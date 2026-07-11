@@ -153,7 +153,7 @@ const GlobalArgsSchema = z.object({
   ),
 });
 
-type GlobalArgs = z.infer<typeof GlobalArgsSchema>;
+export type GlobalArgs = z.infer<typeof GlobalArgsSchema>;
 
 // ---------------------------------------------------------------------------
 // Schemas — resource outputs
@@ -263,7 +263,7 @@ const PlanSummarySchema = z.object({
  * @param prefixLen The output prefix length for display
  * @returns Formatted prefix string like "2602:f4fb:0bed::/48"
  */
-function buildPrefix(
+export function buildPrefix(
   root: string,
   rootLength: number,
   nibbles: string,
@@ -291,7 +291,7 @@ function buildPrefix(
  * @param nibbles Hex nibbles appended after the root boundary
  * @returns Compressed IPv6 address
  */
-function buildAddress(
+export function buildAddress(
   root: string,
   rootLength: number,
   nibbles: string,
@@ -312,7 +312,7 @@ function buildAddress(
  * Compress an expanded IPv6 address by removing leading zeros per group
  * and collapsing the longest run of all-zero groups to "::".
  */
-function compressIPv6(expanded: string): string {
+export function compressIPv6(expanded: string): string {
   const groups = expanded.split(":").map((g) => g.replace(/^0+/, "") || "0");
 
   let bestStart = -1;
@@ -348,7 +348,7 @@ function compressIPv6(expanded: string): string {
 // ---------------------------------------------------------------------------
 
 /** Check for overlapping prefixes within a list. */
-function findOverlaps(
+export function findOverlaps(
   prefixes: Array<{ key: string; prefix: string; length: number }>,
 ): string[] {
   const errors: string[] = [];
@@ -378,7 +378,7 @@ function findOverlaps(
 }
 
 /** Check if prefix A contains prefix B (A is same or shorter). */
-function prefixContains(
+export function prefixContains(
   aAddr: string,
   aLen: number,
   bAddr: string,
@@ -402,7 +402,7 @@ function addrToBits(addr: string): string {
 }
 
 /** Expand a compressed IPv6 address to 8 full groups. */
-function expandIPv6(addr: string): string {
+export function expandIPv6(addr: string): string {
   if (addr.includes("::")) {
     const [left, right] = addr.split("::");
     const leftGroups = left ? left.split(":") : [];
@@ -427,7 +427,9 @@ function expandIPv6(addr: string): string {
 // ---------------------------------------------------------------------------
 
 /** Compute the full address plan from global arguments. */
-function computePlan(args: GlobalArgs): z.infer<typeof PlanSummarySchema> {
+export function computePlan(
+  args: GlobalArgs,
+): z.infer<typeof PlanSummarySchema> {
   const errors: string[] = [];
   const rl = args.rootLength;
 
@@ -486,13 +488,13 @@ function computePlan(args: GlobalArgs): z.infer<typeof PlanSummarySchema> {
     });
   }
 
-  // Validate: no duplicate /44 slots within a region
-  const slotKeys = Object.entries(args.sites).map(([_k, s]) =>
-    `${s.region}:${s.slotNibble}`
+  // Validate: no duplicate /48 prefixes within a region (slot + offset)
+  const prefixKeys = Object.entries(args.sites).map(([_k, s]) =>
+    `${s.region}:${s.slotNibble}:${s.offsetNibble ?? "0"}`
   );
-  const slotSet = new Set(slotKeys);
-  if (slotSet.size !== slotKeys.length) {
-    errors.push("Duplicate /44 slot within a region detected");
+  const prefixKeySet = new Set(prefixKeys);
+  if (prefixKeySet.size !== prefixKeys.length) {
+    errors.push("Duplicate /48 prefix within a region detected");
   }
 
   // --- Subnets -> /64 ---
@@ -628,6 +630,20 @@ function computePlan(args: GlobalArgs): z.infer<typeof PlanSummarySchema> {
     length: s.prefixLength,
   }));
   errors.push(...findOverlaps(sitePrefixes));
+
+  const subnetPrefixes = subnets.map((s) => ({
+    key: `subnet:${s.key}`,
+    prefix: s.prefix.split("/")[0],
+    length: s.prefixLength,
+  }));
+  errors.push(...findOverlaps(subnetPrefixes));
+
+  const tunnelPrefixes = tunnelList.map((t) => ({
+    key: `tunnel:${t.key}`,
+    prefix: t.prefix.split("/")[0],
+    length: t.prefixLength,
+  }));
+  errors.push(...findOverlaps(tunnelPrefixes));
 
   return {
     root: args.root,

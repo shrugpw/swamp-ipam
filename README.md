@@ -9,8 +9,8 @@ runtime input, computes fully-qualified IPv6 prefixes, validates invariants
 structured resource data consumable by other models via CEL expressions.
 
 The model is fully generic — supply your own allocation plan via `--input-file`
-without forking the extension. See `examples/shrug-plan.yaml` for a complete
-reference plan.
+without forking the extension. See `examples/example-plan.yaml` for a complete
+reference plan using RFC 9637 documentation space.
 
 ## Quick start
 
