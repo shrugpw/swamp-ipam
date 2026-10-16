@@ -41,7 +41,7 @@ const SiteDefSchema = z.object({
     .regex(/^[0-9a-f]$/)
     .default("0")
     .describe(
-      "Hex nibble selecting the /48 within the /44 slot (0 = first, d = 0bed-style)",
+      "Hex nibble selecting the /48 within the /44 slot (0 = first, f = last)",
     ),
   name: z.string().describe("Human-readable site name"),
   location: z.string().describe("City, State/Country"),
@@ -140,7 +140,7 @@ const V4ConfigSchema = z.object({
 const GlobalArgsSchema = z.object({
   root: z
     .string()
-    .describe("Allocation root prefix, e.g. '2602:f4fb'"),
+    .describe("Allocation root prefix, e.g. '3fff:0db8'"),
   rootLength: z
     .number()
     .int()
@@ -321,14 +321,14 @@ const PlanSummarySchema = z.object({
  *
  * The root is zero-padded to ceil(rootLength/4) hex nibbles so that
  * `nibbles` starts exactly at the root boundary. For a /36 root like
- * "2602:f4fb", the root hex becomes "2602f4fb0" (9 nibbles), and the
- * region nibble "b" appended gives "2602f4fb0b..." → "2602:f4fb:0b...".
+ * "3fff:0db8", the root hex becomes "3fff0db80" (9 nibbles), and the
+ * region nibble "a" appended gives "3fff0db80a..." → "3fff:0db8:0a...".
  *
- * @param root Allocation root, e.g. "2602:f4fb"
+ * @param root Allocation root, e.g. "3fff:0db8"
  * @param rootLength Root prefix length in bits (e.g. 36)
  * @param nibbles Hex nibbles appended after the root boundary
  * @param prefixLen The output prefix length for display
- * @returns Formatted prefix string like "2602:f4fb:0bed::/48"
+ * @returns Formatted prefix string like "3fff:0db8:0a10::/48"
  */
 export function buildPrefix(
   root: string,
