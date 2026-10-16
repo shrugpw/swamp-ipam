@@ -1222,6 +1222,14 @@ export const model = {
   description:
     "IPv6 address planner: computes fully-qualified prefixes from a region-rooted /40 allocation scheme and validates invariants. Also optionally plans an IPv4 public block and NAT64 prefix (dual-stack).",
   globalArguments: GlobalArgsSchema,
+  upgrades: [
+    {
+      toVersion: "2026.10.16.1",
+      description:
+        "Add optional IPv4 dual-stack planning (v4 field). No migration: v6-only instances are unaffected (v4 is a new optional field).",
+      upgradeAttributes: (old: Record<string, unknown>) => old,
+    },
+  ],
   resources: {
     "plan": {
       description:
