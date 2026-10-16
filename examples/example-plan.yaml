@@ -373,3 +373,27 @@ anycastVips:
     hostPart: "7b"
     service: NTP
     status: planned
+
+# Optional IPv4 public block (dual-stack). A /24 is too small to stride
+# per-site, so it is modeled as a flat named allocation table: the planner
+# packs each named block into the /24 (aligned, excluding .0/.255), reports
+# the free remainder, and validates the NAT64 /96 sits inside the v6 root.
+# Uses RFC 5737 documentation space (192.0.2.0/24).
+v4:
+  root: "192.0.2.0"
+  rootLength: 24
+  # NAT64 translation /96, carved from this plan's own v6 root (3fff:0db8::/36)
+  nat64Prefix: "3fff:0db8:64::"
+  allocations:
+    nat64-pool:
+      size: 32
+      purpose: Stateful NAT64 source pool (single anchor, not anycast)
+      status: active
+    dns-vip:
+      size: 8
+      purpose: Dual-stack recursive + authoritative DNS
+      status: active
+    ingress-vip:
+      size: 16
+      purpose: IPv4 front-ends for v6-native services
+      status: planned

@@ -123,7 +123,7 @@ const V4AllocationDefSchema = z.object({
 const V4ConfigSchema = z.object({
   root: z
     .string()
-    .describe("IPv4 dotted-quad network address, e.g. '23.164.68.0'"),
+    .describe("IPv4 dotted-quad network address, e.g. '192.0.2.0'"),
   rootLength: z
     .number()
     .int()
@@ -131,7 +131,7 @@ const V4ConfigSchema = z.object({
     .describe("IPv4 root prefix length"),
   nat64Prefix: z
     .string()
-    .describe("IPv6 /96 base literal for NAT64, e.g. '2602:f4fb:64::'"),
+    .describe("IPv6 /96 base literal for NAT64, e.g. '3fff:0db8:64::'"),
   allocations: z
     .record(z.string(), V4AllocationDefSchema)
     .describe("IPv4 public allocations keyed by slug"),
