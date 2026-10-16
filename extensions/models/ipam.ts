@@ -106,6 +106,37 @@ const AnycastPrefixDefSchema = z.object({
   status: StatusEnum.default("planned"),
 });
 
+// --- IPv4 dual-stack input (optional, additive) ---
+
+const V4AllocationDefSchema = z.object({
+  size: z
+    .number()
+    .int()
+    .min(1)
+    .describe(
+      "Minimum number of addresses needed (rounded up to a power of 2)",
+    ),
+  purpose: z.string(),
+  status: StatusEnum.default("planned"),
+});
+
+const V4ConfigSchema = z.object({
+  root: z
+    .string()
+    .describe("IPv4 dotted-quad network address, e.g. '23.164.68.0'"),
+  rootLength: z
+    .number()
+    .int()
+    .default(24)
+    .describe("IPv4 root prefix length"),
+  nat64Prefix: z
+    .string()
+    .describe("IPv6 /96 base literal for NAT64, e.g. '2602:f4fb:64::'"),
+  allocations: z
+    .record(z.string(), V4AllocationDefSchema)
+    .describe("IPv4 public allocations keyed by slug"),
+});
+
 const GlobalArgsSchema = z.object({
   root: z
     .string()
@@ -150,6 +181,9 @@ const GlobalArgsSchema = z.object({
   ),
   anycastVips: z.record(z.string(), AnycastDefSchema).describe(
     "Anycast service VIPs keyed by slug",
+  ),
+  v4: V4ConfigSchema.optional().describe(
+    "Optional IPv4 public block to plan (dual-stack). Purely additive.",
   ),
 });
 
@@ -223,6 +257,38 @@ const AnycastVipOutputSchema = z.object({
   status: z.string(),
 });
 
+// --- IPv4 dual-stack output (optional, additive) ---
+
+const V4AllocationOutputSchema = z.object({
+  key: z.string(),
+  cidr: z.string(),
+  prefixLength: z.number().int(),
+  firstAddr: z.string(),
+  lastAddr: z.string(),
+  usableCount: z.number().int(),
+  purpose: z.string(),
+  status: z.string(),
+});
+
+const V4FreeRangeSchema = z.object({
+  firstAddr: z.string(),
+  lastAddr: z.string(),
+  count: z.number().int(),
+});
+
+const V4OutputSchema = z.object({
+  root: z.string(),
+  rootLength: z.number().int(),
+  nat64Prefix: z.string(),
+  allocations: z.array(V4AllocationOutputSchema),
+  freeRanges: z.array(V4FreeRangeSchema),
+  counts: z.object({
+    allocations: z.number().int(),
+    usedAddresses: z.number().int(),
+    freeAddresses: z.number().int(),
+  }),
+});
+
 const PlanSummarySchema = z.object({
   root: z.string(),
   rootLength: z.number().int(),
@@ -243,6 +309,7 @@ const PlanSummarySchema = z.object({
   tunnels: z.array(TunnelOutputSchema),
   loopbacks: z.array(LoopbackOutputSchema),
   anycastVips: z.array(AnycastVipOutputSchema),
+  v4: V4OutputSchema.optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -420,6 +487,176 @@ export function expandIPv6(addr: string): string {
     .split(":")
     .map((g) => g.padStart(4, "0"))
     .join(":");
+}
+
+// ---------------------------------------------------------------------------
+// IPv4 dual-stack helpers + allocator (additive — independent of the v6 paths)
+// ---------------------------------------------------------------------------
+
+/** Convert a dotted-quad IPv4 string to a 32-bit unsigned integer. */
+export function ipv4ToInt(dotted: string): number {
+  const parts = dotted.trim().split(".").map((p) => parseInt(p, 10));
+  return (
+    ((parts[0] << 24) |
+      (parts[1] << 16) |
+      (parts[2] << 8) |
+      parts[3]) >>> 0
+  );
+}
+
+/** Convert a 32-bit unsigned integer to a dotted-quad IPv4 string. */
+export function intToIpv4(n: number): string {
+  const u = n >>> 0;
+  return [
+    (u >>> 24) & 0xff,
+    (u >>> 16) & 0xff,
+    (u >>> 8) & 0xff,
+    u & 0xff,
+  ].join(".");
+}
+
+/** Smallest power of 2 that is >= max(n, 1). */
+export function nextPow2(n: number): number {
+  const m = Math.max(n, 1);
+  let p = 1;
+  while (p < m) p <<= 1;
+  return p;
+}
+
+/**
+ * Deterministically allocate IPv4 blocks out of a /24 root.
+ *
+ * Reserves the network (.0) and broadcast (.255) addresses, places each
+ * allocation at the lowest aligned offset that fits and does not overlap,
+ * and reports the remaining contiguous free ranges. NAT64 /96 containment
+ * within the v6 root is validated using the existing IPv6 helpers.
+ */
+export function computeV4Plan(
+  v4: z.infer<typeof V4ConfigSchema>,
+  v6Root: string,
+  v6RootLength: number,
+): { output: z.infer<typeof V4OutputSchema>; errors: string[] } {
+  const errors: string[] = [];
+
+  const SIZE = 256; // /24
+  const rootInt = ipv4ToInt(v4.root);
+  const networkOffset = 0;
+  const broadcastOffset = SIZE - 1; // .255
+
+  // Build the placement list, sorted by blockSize desc, name asc.
+  const toPlace = Object.entries(v4.allocations).map(([key, def]) => {
+    const blockSize = nextPow2(def.size);
+    const prefixLength = 32 - Math.round(Math.log2(blockSize));
+    return { key, def, blockSize, prefixLength };
+  });
+  toPlace.sort((a, b) =>
+    b.blockSize - a.blockSize || a.key.localeCompare(b.key)
+  );
+
+  const placed: Array<{ start: number; end: number }> = [];
+  const allocations: z.infer<typeof V4AllocationOutputSchema>[] = [];
+
+  for (const item of toPlace) {
+    let chosen = -1;
+    for (
+      let offset = 0;
+      offset + item.blockSize <= SIZE;
+      offset += item.blockSize
+    ) {
+      const start = offset;
+      const end = offset + item.blockSize - 1;
+      // Must not cover the network or broadcast address.
+      if (start <= networkOffset && networkOffset <= end) continue;
+      if (start <= broadcastOffset && broadcastOffset <= end) continue;
+      // Must not overlap an already-placed block.
+      const overlaps = placed.some((b) => start <= b.end && b.start <= end);
+      if (overlaps) continue;
+      chosen = offset;
+      break;
+    }
+
+    if (chosen === -1) {
+      errors.push(`IPv4: cannot place ${item.key} (/${item.prefixLength})`);
+      continue;
+    }
+
+    const start = chosen;
+    const end = chosen + item.blockSize - 1;
+    placed.push({ start, end });
+    const firstInt = rootInt + start;
+    const lastInt = rootInt + end;
+    allocations.push({
+      key: item.key,
+      cidr: `${intToIpv4(firstInt)}/${item.prefixLength}`,
+      prefixLength: item.prefixLength,
+      firstAddr: intToIpv4(firstInt),
+      lastAddr: intToIpv4(lastInt),
+      usableCount: item.blockSize,
+      purpose: item.def.purpose,
+      status: item.def.status,
+    });
+  }
+
+  // Compute free ranges within [.1 .. .254] (exclude .0 and .255).
+  const used = new Array<boolean>(SIZE).fill(false);
+  used[networkOffset] = true;
+  used[broadcastOffset] = true;
+  for (const b of placed) {
+    for (let i = b.start; i <= b.end; i++) used[i] = true;
+  }
+  const freeRanges: z.infer<typeof V4FreeRangeSchema>[] = [];
+  let runStart = -1;
+  for (let i = 1; i <= SIZE - 2; i++) {
+    if (!used[i]) {
+      if (runStart === -1) runStart = i;
+    } else if (runStart !== -1) {
+      freeRanges.push({
+        firstAddr: intToIpv4(rootInt + runStart),
+        lastAddr: intToIpv4(rootInt + i - 1),
+        count: i - runStart,
+      });
+      runStart = -1;
+    }
+  }
+  if (runStart !== -1) {
+    const endIdx = SIZE - 2;
+    freeRanges.push({
+      firstAddr: intToIpv4(rootInt + runStart),
+      lastAddr: intToIpv4(rootInt + endIdx),
+      count: endIdx - runStart + 1,
+    });
+  }
+
+  const usedAddresses = placed.reduce(
+    (sum, b) => sum + (b.end - b.start + 1),
+    0,
+  );
+
+  // Validate NAT64 /96 containment within the v6 root (existing helpers).
+  const v6RootAddr = buildAddress(v6Root, v6RootLength, "");
+  const nat64Base = v4.nat64Prefix.replace(/\/\d+$/, "");
+  if (!prefixContains(v6RootAddr, v6RootLength, nat64Base, 96)) {
+    errors.push(
+      `IPv4: nat64Prefix ${v4.nat64Prefix} is not within ${v6Root}/${v6RootLength}`,
+    );
+  }
+  const nat64Compressed = compressIPv6(expandIPv6(nat64Base)) + "/96";
+
+  return {
+    output: {
+      root: v4.root,
+      rootLength: v4.rootLength,
+      nat64Prefix: nat64Compressed,
+      allocations,
+      freeRanges,
+      counts: {
+        allocations: placed.length,
+        usedAddresses,
+        freeAddresses: SIZE - 2 - usedAddresses,
+      },
+    },
+    errors,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -645,7 +882,15 @@ export function computePlan(
   }));
   errors.push(...findOverlaps(tunnelPrefixes));
 
-  return {
+  // --- IPv4 dual-stack plan (optional, additive) ---
+  let v4Output: z.infer<typeof V4OutputSchema> | undefined;
+  if (args.v4) {
+    const v4 = computeV4Plan(args.v4, args.root, args.rootLength);
+    errors.push(...v4.errors);
+    v4Output = v4.output;
+  }
+
+  const result: z.infer<typeof PlanSummarySchema> = {
     root: args.root,
     rootLength: args.rootLength,
     generatedAt: new Date().toISOString(),
@@ -666,6 +911,8 @@ export function computePlan(
     loopbacks: loopbackList,
     anycastVips: vipList,
   };
+  if (v4Output) result.v4 = v4Output;
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -867,6 +1114,32 @@ export function renderMarkdown(plan: PlanSummary): string {
     lines.push("");
   }
 
+  // IPv4 public allocation (dual-stack, additive)
+  if (plan.v4) {
+    const v4 = plan.v4;
+    lines.push(
+      `## IPv4 Public Allocation (${v4.root}/${v4.rootLength})`,
+      "",
+    );
+    lines.push(`NAT64 prefix: ${v4.nat64Prefix}`, "");
+    lines.push("| Name | CIDR | Usable | Purpose | Status |");
+    lines.push("| --- | --- | --- | --- | --- |");
+    for (const a of v4.allocations) {
+      lines.push(
+        `| ${a.key} | ${a.cidr} | ${a.usableCount} | ${a.purpose} | ${a.status} |`,
+      );
+    }
+    lines.push("");
+    const freeSummary = v4.freeRanges
+      .map((r) => `${r.firstAddr}-${r.lastAddr} (${r.count})`)
+      .join(", ");
+    lines.push(
+      `Free space: ${v4.counts.freeAddresses} addresses` +
+        (freeSummary ? ` — ${freeSummary}` : ""),
+      "",
+    );
+  }
+
   return lines.join("\n");
 }
 
@@ -945,9 +1218,9 @@ export function renderTopologyMermaid(plan: PlanSummary): string {
 /** IPv6 address planner model definition. */
 export const model = {
   type: "@shrug/ipam",
-  version: "2026.07.11.2",
+  version: "2026.10.16.1",
   description:
-    "IPv6 address planner: computes fully-qualified prefixes from a region-rooted /40 allocation scheme and validates invariants.",
+    "IPv6 address planner: computes fully-qualified prefixes from a region-rooted /40 allocation scheme and validates invariants. Also optionally plans an IPv4 public block and NAT64 prefix (dual-stack).",
   globalArguments: GlobalArgsSchema,
   resources: {
     "plan": {
